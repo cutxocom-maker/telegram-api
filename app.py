@@ -7,19 +7,19 @@ from collections import deque
 
 app = Flask(__name__)
 
-# ================= CONFIG =================
-api_id = 39685669
-api_hash = "924290ea28ac71b6c0242c8515a09ebf"
-bot_username = "tipusultanTg"
+# ================= ENV CONFIG =================
+api_id = int(os.environ.get("API_ID"))
+api_hash = os.environ.get("API_HASH")
+bot_username = os.environ.get("BOT_USERNAME")
 
 client = TelegramClient("session", api_id, api_hash)
 
-# store last replies
 messages = deque(maxlen=100)
 
-# ================= TELEGRAM WORKER =================
+# ================= EVENT LOOP =================
+loop = asyncio.new_event_loop()
+
 def telegram_worker():
-    loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
     async def main():
@@ -36,33 +36,32 @@ def telegram_worker():
 
 threading.Thread(target=telegram_worker, daemon=True).start()
 
+
+# ================= SAFE ASYNC RUNNER =================
+def run_async(coro):
+    return asyncio.run_coroutine_threadsafe(coro, loop).result()
+
+
 # ================= API =================
 
 @app.route("/")
 def home():
-    return "Telegram API Running"
+    return "Cloud Telegram API Running"
 
 @app.route("/send", methods=["POST"])
 def send():
     try:
-        data = request.json
-        msg = data.get("message")
+        msg = request.json.get("message")
 
         if not msg:
             return jsonify({"error": "message required"}), 400
 
-        asyncio.run(client.send_message(bot_username, msg))
+        run_async(client.send_message(bot_username, msg))
 
-        return jsonify({
-            "ok": True,
-            "status": "sent"
-        })
+        return jsonify({"ok": True, "status": "sent"})
 
     except Exception as e:
-        return jsonify({
-            "ok": False,
-            "error": str(e)
-        })
+        return jsonify({"ok": False, "error": str(e)})
 
 
 @app.route("/get", methods=["GET"])
@@ -73,11 +72,12 @@ def get():
     })
 
 
-@app.route("/health", methods=["GET"])
+@app.route("/health")
 def health():
     return {"status": "ok"}
 
+
 # ================= START SERVER =================
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
+    port = int(os.environ.get("PORT", 8080))  # cloud safe
     app.run(host="0.0.0.0", port=port)
