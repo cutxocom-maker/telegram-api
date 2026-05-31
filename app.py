@@ -14,7 +14,7 @@ bot_username = os.environ.get("BOT_USERNAME")
 
 client = TelegramClient("session", api_id, api_hash)
 
-messages = deque(maxlen=100)
+messages = deque(maxlen=1000)
 
 # ================= EVENT LOOP =================
 loop = asyncio.new_event_loop()
