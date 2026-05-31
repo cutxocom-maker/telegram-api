@@ -8,7 +8,7 @@ from collections import deque
 app = Flask(__name__)
 
 api_id = 39685669
-api_hash = "924290ea28ac71b6c0242c8515a09ebf"
+api_hash = "e2d1fa04-8308-4e38-bed4-68f99a618d21"
 bot_username = "tipusultanTg"
 
 client = TelegramClient("session", api_id, api_hash)
@@ -16,28 +16,29 @@ client = TelegramClient("session", api_id, api_hash)
 messages = deque(maxlen=100)
 
 
-# ---------------- TELEGRAM BACKGROUND LOOP ----------------
+# ---------------- TELEGRAM LOOP ----------------
+async def telegram_main():
+    await client.start()
+
+    @client.on(events.NewMessage(from_users=bot_username))
+    async def handler(event):
+        messages.append(event.raw_text)
+
+    print("Telegram connected")
+    await client.run_until_disconnected()
+
+
 def start_telegram():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-
-    async def main():
-        await client.start()
-
-        @client.on(events.NewMessage(from_users=bot_username))
-        async def handler(event):
-            messages.append(event.message.text)
-
-        print("Telegram listener started")
-        await client.run_until_disconnected()
-
-    loop.run_until_complete(main())
+    loop.run_until_complete(telegram_main())
 
 
+# START TELEGRAM BEFORE FLASK
 threading.Thread(target=start_telegram, daemon=True).start()
 
 
-# ---------------- SEND MESSAGE (FAST, NO BLOCK) ----------------
+# ---------------- API ----------------
 @app.route("/send", methods=["POST"])
 def send():
     try:
@@ -49,13 +50,12 @@ def send():
 
         asyncio.run(client.send_message(bot_username, msg))
 
-        return jsonify({"ok": True, "status": "sent"})
+        return jsonify({"ok": True})
 
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
+        return jsonify({"error": str(e)})
 
 
-# ---------------- GET RESPONSES (FAST) ----------------
 @app.route("/get", methods=["GET"])
 def get():
     return jsonify({
@@ -64,12 +64,15 @@ def get():
     })
 
 
-# ---------------- HEALTH CHECK ----------------
-@app.route("/health", methods=["GET"])
+@app.route("/health")
 def health():
-    return jsonify({"ok": True})
+    return "OK"
 
 
 # ---------------- START SERVER ----------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 5000)),
+        use_reloader=False
+    )
