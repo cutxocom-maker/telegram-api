@@ -2,39 +2,42 @@ from flask import Flask, request, jsonify
 from telethon import TelegramClient, events
 import asyncio
 import os
+import threading
 from collections import deque
 
 app = Flask(__name__)
 
-# ---------------- CONFIG ----------------
 api_id = 39685669
 api_hash = "924290ea28ac71b6c0242c8515a09ebf"
 bot_username = "tipusultanTg"
 
 client = TelegramClient("session", api_id, api_hash)
 
-loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop)
-
-# store last messages safely (queue)
-messages = deque(maxlen=50)
+messages = deque(maxlen=100)
 
 
-# ---------------- TELEGRAM EVENT LISTENER ----------------
-@client.on(events.NewMessage(from_users=bot_username))
-async def handler(event):
-    messages.append(event.message.text)
+# ---------------- TELEGRAM BACKGROUND LOOP ----------------
+def start_telegram():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    async def main():
+        await client.start()
+
+        @client.on(events.NewMessage(from_users=bot_username))
+        async def handler(event):
+            messages.append(event.message.text)
+
+        print("Telegram listener started")
+        await client.run_until_disconnected()
+
+    loop.run_until_complete(main())
 
 
-async def start_telegram():
-    await client.start()
-    print("Telegram client started")
+threading.Thread(target=start_telegram, daemon=True).start()
 
 
-loop.run_until_complete(start_telegram())
-
-
-# ---------------- API: SEND ----------------
+# ---------------- SEND MESSAGE (FAST, NO BLOCK) ----------------
 @app.route("/send", methods=["POST"])
 def send():
     try:
@@ -44,18 +47,15 @@ def send():
         if not msg:
             return jsonify({"error": "message required"}), 400
 
-        loop.run_until_complete(client.send_message(bot_username, msg))
+        asyncio.run(client.send_message(bot_username, msg))
 
-        return jsonify({
-            "ok": True,
-            "status": "sent"
-        })
+        return jsonify({"ok": True, "status": "sent"})
 
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)})
 
 
-# ---------------- API: GET MESSAGES ----------------
+# ---------------- GET RESPONSES (FAST) ----------------
 @app.route("/get", methods=["GET"])
 def get():
     return jsonify({
@@ -67,7 +67,7 @@ def get():
 # ---------------- HEALTH CHECK ----------------
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"status": "running"})
+    return jsonify({"ok": True})
 
 
 # ---------------- START SERVER ----------------
